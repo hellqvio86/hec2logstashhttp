@@ -20,6 +20,7 @@ jobs:
 
     permissions:
       contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v6
@@ -44,7 +45,8 @@ jobs:
         with:
           files: ./coverage.out
           flags: unittests
-          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
 
       - name: Run go vet
         run: make vet
