@@ -19,8 +19,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
-      id-token: write
+      contents: write
 
     steps:
       - uses: actions/checkout@v6
@@ -40,13 +39,18 @@ jobs:
       - name: Generate coverage report
         run: make coverage
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+      - name: Update coverage badge (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          chmod +x .github/scripts/generate_coverage_badge.sh
+          .github/scripts/generate_coverage_badge.sh coverage.out badges/coverage.svg
+
+      - name: Commit coverage badge (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
-          files: ./coverage.out
-          flags: unittests
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: true
+          commit_message: "chore: update coverage badge [skip ci]"
+          file_pattern: badges/coverage.svg
+        uses: stefanzweifel/git-auto-commit-action@v6
 
       - name: Run go vet
         run: make vet

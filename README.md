@@ -1,7 +1,7 @@
 # hec2logstashhttp
 
 [![CI](https://github.com/hellqvio86/hec2logstashhttp/actions/workflows/ci.yml/badge.svg)](https://github.com/hellqvio86/hec2logstashhttp/actions/workflows/ci.yml)
-[![Coverage](https://codecov.io/gh/hellqvio86/hec2logstashhttp/branch/main/graph/badge.svg)](https://codecov.io/gh/hellqvio86/hec2logstashhttp)
+[![Coverage](https://raw.githubusercontent.com/hellqvio86/hec2logstashhttp/main/badges/coverage.svg)](https://github.com/hellqvio86/hec2logstashhttp/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/hellqvio86/hec2logstashhttp)](https://github.com/hellqvio86/hec2logstashhttp/releases)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/hellqvio86/hec2logstashhttp)](https://github.com/hellqvio86/hec2logstashhttp/blob/main/go.mod)
 [![License](https://img.shields.io/github/license/hellqvio86/hec2logstashhttp)](https://github.com/hellqvio86/hec2logstashhttp/blob/main/LICENSE)
