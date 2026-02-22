@@ -29,7 +29,7 @@ func run(args []string, stdout io.Writer) int {
 		return 2
 	}
 	if *showVersion {
-		fmt.Fprintf(stdout, "version=%s commit=%s date=%s\n", version.Version, version.Commit, version.Date)
+		_, _ = fmt.Fprintf(stdout, "version=%s commit=%s date=%s\n", version.Version, version.Commit, version.Date)
 		return 0
 	}
 
