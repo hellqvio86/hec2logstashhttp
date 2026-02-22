@@ -16,7 +16,7 @@ const (
 )
 
 type Forwarder interface {
-	Forward(ctx context.Context, path string, body []byte, authHeader string, userAgent string) error
+	Forward(ctx context.Context, path string, body []byte, meta ForwardMeta) error
 }
 
 type Server struct {
@@ -105,13 +105,35 @@ func (h *hecHandler) collect(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), h.cfg.RequestTimeout)
 	defer cancel()
 
-	if err := h.forwarder.Forward(ctx, r.URL.Path, forwardBody, authHeader, userAgent); err != nil {
+	meta := ForwardMeta{
+		AuthHeader:      authHeader,
+		UserAgent:       userAgent,
+		ClientIP:        clientIPFromRemoteAddr(r.RemoteAddr),
+		Host:            strings.TrimSpace(r.Host),
+		Proto:           requestProto(r),
+		XForwardedFor:   strings.TrimSpace(r.Header.Get("X-Forwarded-For")),
+		XForwardedHost:  strings.TrimSpace(r.Header.Get("X-Forwarded-Host")),
+		XForwardedProto: strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")),
+		Forwarded:       strings.TrimSpace(r.Header.Get("Forwarded")),
+	}
+
+	if err := h.forwarder.Forward(ctx, r.URL.Path, forwardBody, meta); err != nil {
 		h.logger.Warn("forward failed", "err", err, "path", r.URL.Path, "preview", previewBody(body))
 		writeJSON(w, http.StatusServiceUnavailable, HECResponse{Text: "Server is busy", Code: 9})
 		return
 	}
 
 	writeJSON(w, http.StatusOK, HECResponse{Text: "Success", Code: 0})
+}
+
+func requestProto(r *http.Request) string {
+	if p := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); p != "" {
+		return strings.ToLower(p)
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
 }
 
 func (h *hecHandler) authorized(authHeader string) bool {

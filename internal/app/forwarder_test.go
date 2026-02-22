@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -34,13 +35,18 @@ func TestNormalizePath(t *testing.T) {
 }
 
 func TestForwarderForward(t *testing.T) {
-	var gotPath, gotAuth, gotBody, gotUserAgent string
+	var gotPath, gotAuth, gotBody, gotUserAgent, gotXFF, gotXRealIP, gotXFHost, gotXFProto, gotForwarded string
 
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
 		gotUserAgent = r.Header.Get("User-Agent")
+		gotXFF = r.Header.Get("X-Forwarded-For")
+		gotXRealIP = r.Header.Get("X-Real-IP")
+		gotXFHost = r.Header.Get("X-Forwarded-Host")
+		gotXFProto = r.Header.Get("X-Forwarded-Proto")
+		gotForwarded = r.Header.Get("Forwarded")
 		gotBody = string(b)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -54,7 +60,13 @@ func TestForwarderForward(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	f := NewHTTPForwarder(cfg, logger)
 
-	err := f.Forward(context.Background(), "/services/collector/event", []byte(`{"event":"hello"}`), "Splunk token", "HomeAssistant/2026.2")
+	err := f.Forward(context.Background(), "/services/collector/event", []byte(`{"event":"hello"}`), ForwardMeta{
+		AuthHeader: "Splunk token",
+		UserAgent:  "HomeAssistant/2026.2",
+		ClientIP:   "192.0.2.10",
+		Host:       "example.test",
+		Proto:      "https",
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -70,6 +82,21 @@ func TestForwarderForward(t *testing.T) {
 	}
 	if gotUserAgent != "HomeAssistant/2026.2" {
 		t.Fatalf("unexpected user-agent %s", gotUserAgent)
+	}
+	if gotXFF != "192.0.2.10" {
+		t.Fatalf("unexpected x-forwarded-for %s", gotXFF)
+	}
+	if gotXRealIP != "192.0.2.10" {
+		t.Fatalf("unexpected x-real-ip %s", gotXRealIP)
+	}
+	if gotXFHost != "example.test" {
+		t.Fatalf("unexpected x-forwarded-host %s", gotXFHost)
+	}
+	if gotXFProto != "https" {
+		t.Fatalf("unexpected x-forwarded-proto %s", gotXFProto)
+	}
+	if gotForwarded == "" || !strings.Contains(gotForwarded, "for=192.0.2.10") {
+		t.Fatalf("unexpected Forwarded header %s", gotForwarded)
 	}
 }
 
@@ -90,12 +117,49 @@ func TestForwarderForwardUserAgentDisabled(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	f := NewHTTPForwarder(cfg, logger)
 
-	err := f.Forward(context.Background(), "/services/collector/event", []byte(`{"event":"hello"}`), "", "HomeAssistant/2026.2")
+	err := f.Forward(context.Background(), "/services/collector/event", []byte(`{"event":"hello"}`), ForwardMeta{
+		UserAgent: "HomeAssistant/2026.2",
+		ClientIP:  "192.0.2.10",
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if gotUserAgent == "HomeAssistant/2026.2" {
 		t.Fatalf("expected incoming user-agent not to be forwarded, got %s", gotUserAgent)
+	}
+}
+
+func TestForwarderForwardPreservesForwardChain(t *testing.T) {
+	var gotXFF, gotForwarded string
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotXFF = r.Header.Get("X-Forwarded-For")
+		gotForwarded = r.Header.Get("Forwarded")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	cfg := Config{
+		ForwardURL:     backend.URL + "/services/collector/event",
+		RequestTimeout: time.Second,
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	f := NewHTTPForwarder(cfg, logger)
+
+	err := f.Forward(context.Background(), "/services/collector/event", []byte(`{"event":"hello"}`), ForwardMeta{
+		ClientIP:      "192.0.2.10",
+		XForwardedFor: "10.0.0.1",
+		Forwarded:     "for=10.0.0.1;proto=http",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotXFF != "10.0.0.1, 192.0.2.10" {
+		t.Fatalf("unexpected x-forwarded-for %s", gotXFF)
+	}
+	if !strings.Contains(gotForwarded, "for=10.0.0.1;proto=http") || !strings.Contains(gotForwarded, "for=192.0.2.10") {
+		t.Fatalf("unexpected Forwarded header %s", gotForwarded)
 	}
 }

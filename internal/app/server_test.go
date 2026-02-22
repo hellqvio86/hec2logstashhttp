@@ -14,18 +14,16 @@ import (
 )
 
 type mockForwarder struct {
-	lastPath      string
-	lastBody      []byte
-	lastAuth      string
-	lastUserAgent string
-	err           error
+	lastPath string
+	lastBody []byte
+	lastMeta ForwardMeta
+	err      error
 }
 
-func (m *mockForwarder) Forward(_ context.Context, path string, body []byte, authHeader string, userAgent string) error {
+func (m *mockForwarder) Forward(_ context.Context, path string, body []byte, meta ForwardMeta) error {
 	m.lastPath = path
 	m.lastBody = append([]byte(nil), body...)
-	m.lastAuth = authHeader
-	m.lastUserAgent = userAgent
+	m.lastMeta = meta
 	return m.err
 }
 
@@ -53,6 +51,8 @@ func TestCollectSuccess(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/services/collector/event", strings.NewReader(`{"event":"ok"}`))
 	req.Header.Set("Authorization", "Splunk anything")
 	req.Header.Set("User-Agent", "HomeAssistant/2026.2")
+	req.RemoteAddr = "192.0.2.10:12345"
+	req.Host = "example.test"
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -73,8 +73,20 @@ func TestCollectSuccess(t *testing.T) {
 	if got["message"] != "ok" {
 		t.Fatalf("unexpected forwarded body: %s", string(mf.lastBody))
 	}
-	if mf.lastUserAgent != "HomeAssistant/2026.2" {
-		t.Fatalf("unexpected forwarded user-agent: %s", mf.lastUserAgent)
+	if mf.lastMeta.UserAgent != "HomeAssistant/2026.2" {
+		t.Fatalf("unexpected forwarded user-agent: %s", mf.lastMeta.UserAgent)
+	}
+	if mf.lastMeta.AuthHeader != "Splunk anything" {
+		t.Fatalf("unexpected auth header: %s", mf.lastMeta.AuthHeader)
+	}
+	if mf.lastMeta.ClientIP != "192.0.2.10" {
+		t.Fatalf("unexpected client ip: %s", mf.lastMeta.ClientIP)
+	}
+	if mf.lastMeta.Host != "example.test" {
+		t.Fatalf("unexpected host: %s", mf.lastMeta.Host)
+	}
+	if mf.lastMeta.Proto != "http" {
+		t.Fatalf("unexpected proto: %s", mf.lastMeta.Proto)
 	}
 }
 

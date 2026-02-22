@@ -19,6 +19,7 @@ Some senders expect Splunk HEC response semantics (`{"text":"Success","code":0}`
   - `GET /healthz`
 - Optional token validation (`Authorization: Splunk <token>`)
 - Forwards event payloads to Logstash HTTP input
+- Adds standard proxy forwarding headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`)
 - Normalizes Splunk HEC envelopes into Logstash-friendly JSON (supports single and batched HEC events)
 - Rejects non-HEC payloads with Splunk-compatible error response (`{"text":"Invalid data format","code":6}`)
 
