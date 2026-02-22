@@ -239,6 +239,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push Docker image
+        id: docker_build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -260,9 +261,8 @@ jobs:
 
       - name: Generate SBOMs
         run: |
-          tag="${GITHUB_REF_NAME}"
           syft dir:. -o spdx-json=dist/sbom-source.spdx.json
-          syft "${{ env.IMAGE_NAME }}:${tag}" -o spdx-json=dist/sbom-image.spdx.json
+          syft "${{ env.IMAGE_NAME }}@${{ steps.docker_build.outputs.digest }}" -o spdx-json=dist/sbom-image.spdx.json
 
       - name: Upload artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
