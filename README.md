@@ -1,10 +1,10 @@
 # hec2logstashhttp
 
-[![CI](https://github.com/hellqvio/hec2logstashhttp/actions/workflows/ci.yml/badge.svg)](https://github.com/hellqvio/hec2logstashhttp/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/hellqvio/hec2logstashhttp)](https://github.com/hellqvio/hec2logstashhttp/releases)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/hellqvio/hec2logstashhttp)](https://github.com/hellqvio/hec2logstashhttp/blob/main/go.mod)
-[![License](https://img.shields.io/github/license/hellqvio/hec2logstashhttp)](https://github.com/hellqvio/hec2logstashhttp/blob/main/LICENSE)
-[![GHCR](https://img.shields.io/badge/ghcr-hec2logstashhttp-blue?logo=docker)](https://github.com/hellqvio/hec2logstashhttp/pkgs/container/hec2logstashhttp)
+[![CI](https://github.com/hellqvio86/hec2logstashhttp/actions/workflows/ci.yml/badge.svg)](https://github.com/hellqvio86/hec2logstashhttp/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/hellqvio86/hec2logstashhttp)](https://github.com/hellqvio86/hec2logstashhttp/releases)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/hellqvio86/hec2logstashhttp)](https://github.com/hellqvio86/hec2logstashhttp/blob/main/go.mod)
+[![License](https://img.shields.io/github/license/hellqvio86/hec2logstashhttp)](https://github.com/hellqvio86/hec2logstashhttp/blob/main/LICENSE)
+[![GHCR](https://img.shields.io/badge/ghcr-hec2logstashhttp-blue?logo=docker)](https://github.com/hellqvio86/hec2logstashhttp/pkgs/container/hec2logstashhttp)
 
 `hec2logstashhttp` is a small Go service that provides a Splunk HEC-compatible HTTP endpoint for senders like Home Assistant and forwards events to Logstash HTTP input.
 
@@ -102,7 +102,7 @@ make vet
 
 Published image:
 
-- `ghcr.io/hellqvio/hec2logstashhttp`
+- `ghcr.io/hellqvio86/hec2logstashhttp`
 
 Image tags are pushed when a GitHub Release is published:
 
@@ -120,7 +120,7 @@ Supported platforms:
 Pull from GHCR:
 
 ```bash
-docker pull ghcr.io/hellqvio/hec2logstashhttp:latest
+docker pull ghcr.io/hellqvio86/hec2logstashhttp:latest
 ```
 
 Run published image:
@@ -128,7 +128,7 @@ Run published image:
 ```bash
 docker run --rm -p 8088:8088 \
   -e HEC_FORWARD_URL=http://host.docker.internal:18088/services/collector/event \
-  ghcr.io/hellqvio/hec2logstashhttp:latest
+  ghcr.io/hellqvio86/hec2logstashhttp:latest
 ```
 
 Build locally:
