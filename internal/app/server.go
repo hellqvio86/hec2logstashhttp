@@ -232,11 +232,6 @@ func normalizeClientIP(raw string) string {
 	return value
 }
 
-func (h *hecHandler) authorized(authHeader string) bool {
-	_, ok := h.resolveInput(extractAuthToken(authHeader))
-	return ok
-}
-
 func (h *hecHandler) resolveInput(token string) (resolvedInput, bool) {
 	token = strings.TrimSpace(token)
 	if len(h.cfg.Inputs) > 0 {
