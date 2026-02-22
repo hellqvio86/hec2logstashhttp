@@ -14,16 +14,18 @@ import (
 )
 
 type mockForwarder struct {
-	lastPath string
-	lastBody []byte
-	lastAuth string
-	err      error
+	lastPath      string
+	lastBody      []byte
+	lastAuth      string
+	lastUserAgent string
+	err           error
 }
 
-func (m *mockForwarder) Forward(_ context.Context, path string, body []byte, authHeader string) error {
+func (m *mockForwarder) Forward(_ context.Context, path string, body []byte, authHeader string, userAgent string) error {
 	m.lastPath = path
 	m.lastBody = append([]byte(nil), body...)
 	m.lastAuth = authHeader
+	m.lastUserAgent = userAgent
 	return m.err
 }
 
@@ -50,6 +52,7 @@ func TestCollectSuccess(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/services/collector/event", strings.NewReader(`{"event":"ok"}`))
 	req.Header.Set("Authorization", "Splunk anything")
+	req.Header.Set("User-Agent", "HomeAssistant/2026.2")
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, req)
@@ -69,6 +72,9 @@ func TestCollectSuccess(t *testing.T) {
 	}
 	if got["message"] != "ok" {
 		t.Fatalf("unexpected forwarded body: %s", string(mf.lastBody))
+	}
+	if mf.lastUserAgent != "HomeAssistant/2026.2" {
+		t.Fatalf("unexpected forwarded user-agent: %s", mf.lastUserAgent)
 	}
 }
 

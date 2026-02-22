@@ -28,6 +28,7 @@ Environment variables:
 
 - `HEC_LISTEN_ADDR` (default `:8088`)
 - `HEC_FORWARD_URL` (default `http://127.0.0.1:18088/services/collector/event`)
+- `HEC_FORWARD_UA` (default `false`; when `true`, forwards incoming client `User-Agent`)
 - `HEC_TOKEN` (default empty; if empty, auth is not enforced)
 - `HEC_REQUEST_TIMEOUT` (default `5s`)
 - `HEC_SHUTDOWN_TIMEOUT` (default `10s`)

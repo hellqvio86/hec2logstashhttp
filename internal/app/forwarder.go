@@ -14,9 +14,10 @@ import (
 )
 
 type HTTPForwarder struct {
-	target *url.URL
-	client *http.Client
-	logger *slog.Logger
+	target    *url.URL
+	client    *http.Client
+	logger    *slog.Logger
+	forwardUA bool
 }
 
 func NewHTTPForwarder(cfg Config, logger *slog.Logger) *HTTPForwarder {
@@ -30,11 +31,12 @@ func NewHTTPForwarder(cfg Config, logger *slog.Logger) *HTTPForwarder {
 		client: &http.Client{
 			Timeout: cfg.RequestTimeout,
 		},
-		logger: logger,
+		logger:    logger,
+		forwardUA: cfg.ForwardUA,
 	}
 }
 
-func (f *HTTPForwarder) Forward(ctx context.Context, requestPath string, body []byte, authHeader string) error {
+func (f *HTTPForwarder) Forward(ctx context.Context, requestPath string, body []byte, authHeader string, userAgent string) error {
 	forwardURL := *f.target
 	forwardURL.Path = normalizePath(f.target.Path, requestPath)
 
@@ -46,6 +48,9 @@ func (f *HTTPForwarder) Forward(ctx context.Context, requestPath string, body []
 	req.Header.Set("Content-Type", "application/json")
 	if strings.TrimSpace(authHeader) != "" {
 		req.Header.Set("Authorization", authHeader)
+	}
+	if f.forwardUA && strings.TrimSpace(userAgent) != "" {
+		req.Header.Set("User-Agent", userAgent)
 	}
 
 	start := time.Now()
