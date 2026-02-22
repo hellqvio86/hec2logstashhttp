@@ -31,16 +31,20 @@ jobs:
           cache: true
 
       - name: Verify formatting
-        run: |
-          files="$(gofmt -l .)"
-          if [ -n "$files" ]; then
-            echo "Unformatted files:"
-            echo "$files"
-            exit 1
-          fi
+        run: make fmt-check
 
       - name: Run tests
         run: make test
+
+      - name: Generate coverage report
+        run: make coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.out
+          flags: unittests
+          fail_ci_if_error: false
 
       - name: Run go vet
         run: make vet

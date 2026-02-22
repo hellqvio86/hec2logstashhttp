@@ -225,3 +225,61 @@ func TestCollectClientIPFromXForwardedForHeader(t *testing.T) {
 		t.Fatalf("unexpected client ip from x-forwarded-for header: %s", mf.lastMeta.ClientIP)
 	}
 }
+
+func TestCollectWithTokenInputProfile(t *testing.T) {
+	cfg := testConfig()
+	cfg.Inputs = []InputProfile{
+		{
+			Token:                        "profile-token",
+			Name:                         "homeassistant-prod",
+			Route:                        "default",
+			ForwardURL:                   "http://127.0.0.1:18088/services/collector/event",
+			DataStream:                   "logs-homeassistant",
+			Namespace:                    "prod",
+			DefaultSourcetype:            "homeassistant:event",
+			DefaultSource:                "homeassistant",
+			AllowEventSourcetypeOverride: false,
+			AllowEventSourceOverride:     true,
+		},
+	}
+	cfg.RejectUnknown = true
+
+	mf := &mockForwarder{}
+	h := newHandler(cfg, testLogger(), mf)
+
+	req := httptest.NewRequest(http.MethodPost, "/services/collector/event", strings.NewReader(`{"event":"ok","sourcetype":"custom:st","source":"sensor-a"}`))
+	req.Header.Set("Authorization", "Splunk profile-token")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", w.Code)
+	}
+	if mf.lastMeta.ForwardURL != "http://127.0.0.1:18088/services/collector/event" {
+		t.Fatalf("unexpected forward url: %s", mf.lastMeta.ForwardURL)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(mf.lastBody, &got); err != nil {
+		t.Fatalf("forwarded body is not JSON: %v", err)
+	}
+	if got["hec_token_name"] != "homeassistant-prod" {
+		t.Fatalf("missing hec_token_name enrichment: %#v", got)
+	}
+	if got["hec_route"] != "default" {
+		t.Fatalf("missing hec_route enrichment: %#v", got)
+	}
+	if got["hec_datastream"] != "logs-homeassistant" {
+		t.Fatalf("missing hec_datastream enrichment: %#v", got)
+	}
+	if got["hec_namespace"] != "prod" {
+		t.Fatalf("missing hec_namespace enrichment: %#v", got)
+	}
+	if got["hec_sourcetype"] != "homeassistant:event" {
+		t.Fatalf("expected profile-enforced sourcetype, got %#v", got["hec_sourcetype"])
+	}
+	if got["hec_source"] != "sensor-a" {
+		t.Fatalf("expected event source override to be preserved, got %#v", got["hec_source"])
+	}
+}

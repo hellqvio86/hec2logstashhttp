@@ -1,6 +1,7 @@
 # hec2logstashhttp
 
 [![CI](https://github.com/hellqvio86/hec2logstashhttp/actions/workflows/ci.yml/badge.svg)](https://github.com/hellqvio86/hec2logstashhttp/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/hellqvio86/hec2logstashhttp/branch/main/graph/badge.svg)](https://codecov.io/gh/hellqvio86/hec2logstashhttp)
 [![Release](https://img.shields.io/github/v/release/hellqvio86/hec2logstashhttp)](https://github.com/hellqvio86/hec2logstashhttp/releases)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/hellqvio86/hec2logstashhttp)](https://github.com/hellqvio86/hec2logstashhttp/blob/main/go.mod)
 [![License](https://img.shields.io/github/license/hellqvio86/hec2logstashhttp)](https://github.com/hellqvio86/hec2logstashhttp/blob/main/LICENSE)
@@ -24,6 +25,7 @@ Some senders expect Splunk HEC response semantics (`{"text":"Success","code":0}`
 - Health endpoint:
   - `GET /healthz`
 - Optional token validation (`Authorization: Splunk <token>`)
+- Optional token profile routing (`token -> forward_url/datastream/defaults`)
 - Forwards event payloads to Logstash HTTP input
 - Adds standard proxy forwarding headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`)
 - Normalizes Splunk HEC envelopes into Logstash-friendly JSON (supports single and batched HEC events)
@@ -37,10 +39,73 @@ Environment variables:
 - `HEC_FORWARD_URL` (default `http://127.0.0.1:18088/services/collector/event`)
 - `HEC_FORWARD_UA` (default `false`; when `true`, forwards incoming client `User-Agent`)
 - `HEC_TOKEN` (default empty; if empty, auth is not enforced)
+- `HEC_INPUTS_CONFIG` (optional path to token profile config in YAML or JSON; enables Splunk-style token-centric routing)
 - `HEC_REQUEST_TIMEOUT` (default `5s`)
 - `HEC_SHUTDOWN_TIMEOUT` (default `10s`)
 - `HEC_MAX_BODY_BYTES` (default `1048576`)
 - `HEC_LOG_LEVEL` (`debug`, `info`, `warn`, `error`; default `info`)
+
+### Token-Centric Routing (Splunk-style)
+
+When `HEC_INPUTS_CONFIG` is set, tokens are resolved from that file.
+Each token profile can define:
+
+- `forward_url`: where this token forwards (route target)
+- `datastream` and `namespace`: enrichment fields for downstream routing/indexing
+- default `sourcetype` and `source`
+- whether event payload is allowed to override those defaults
+
+The shim enriches forwarded events with:
+
+- `hec_token_name`
+- `hec_route`
+- `hec_datastream`
+- `hec_namespace`
+
+Clear example (`/etc/hec2logstashhttp/inputs.yml`):
+
+```yaml
+inputs:
+  - token: "ha_prod_token"
+    name: "homeassistant-prod"
+    route: "default"
+    forward_url: "http://127.0.0.1:18088/services/collector/event"
+    datastream: "logs-homeassistant"
+    namespace: "prod"
+    default_sourcetype: "homeassistant:event"
+    default_source: "homeassistant"
+    allow_event_sourcetype_override: false
+    allow_event_source_override: true
+
+  - token: "sec_prod_token"
+    name: "security-prod"
+    route: "security"
+    forward_url: "http://127.0.0.1:18089/services/collector/event"
+    datastream: "logs-security"
+    namespace: "prod"
+    default_sourcetype: "security:event"
+    default_source: "sensor-gateway"
+    allow_event_sourcetype_override: false
+    allow_event_source_override: false
+
+fallback:
+  reject_unknown_tokens: true
+```
+
+Run with profile config:
+
+```bash
+docker run --rm -p 8088:8088 \
+  -v /etc/hec2logstashhttp/inputs.yml:/etc/hec2logstashhttp/inputs.yml:ro \
+  -e HEC_INPUTS_CONFIG=/etc/hec2logstashhttp/inputs.yml \
+  ghcr.io/hellqvio86/hec2logstashhttp:latest
+```
+
+Notes:
+
+- If `HEC_INPUTS_CONFIG` is set, token auth comes from the file.
+- If `HEC_INPUTS_CONFIG` is not set, legacy mode is used (`HEC_TOKEN` + `HEC_FORWARD_URL`).
+- `reject_unknown_tokens` defaults to `true` when omitted.
 
 ## Local Run
 
@@ -95,6 +160,7 @@ Print version from the binary:
 
 ```bash
 make test
+make coverage
 make vet
 ```
 

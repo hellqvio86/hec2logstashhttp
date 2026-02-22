@@ -8,10 +8,25 @@ LDFLAGS := -s -w \
 	-X github.com/hellqvio/hec2logstashhttp/internal/version.Commit=$(COMMIT) \
 	-X github.com/hellqvio/hec2logstashhttp/internal/version.Date=$(DATE)
 
-.PHONY: test vet lint build run tidy clean
+.PHONY: fmt fmt-check test coverage vet lint build run tidy clean
+
+fmt:
+	gofmt -w .
+
+fmt-check:
+	files="$$(gofmt -l .)"; \
+	if [ -n "$$files" ]; then \
+		echo "Unformatted files:"; \
+		echo "$$files"; \
+		exit 1; \
+	fi
 
 test:
 	go test ./...
+
+coverage:
+	go test -covermode=atomic -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out
 
 vet:
 	go vet ./...
