@@ -3,17 +3,20 @@ name: CI
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ main ]
+  release:
+    types: [ published ]
+
+env:
+  GO_VERSION: '1.24.x'
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
   validate:
     name: Go Validation & Tests
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go-version: ['1.24.x']
 
     permissions:
       contents: read
@@ -24,7 +27,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: ${{ env.GO_VERSION }}
           cache: true
 
       - name: Verify formatting
@@ -50,8 +53,8 @@ jobs:
   docker-test-build:
     name: Test Docker Build
     needs: [validate]
+    if: github.event_name != 'release' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
 
     permissions:
       contents: read
@@ -71,11 +74,70 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  release:
-    name: Docker Publish + GitHub Release
+  draft-release:
+    name: Draft Release On Version Bump
     needs: [validate]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Detect VERSION changes
+        id: version
+        run: |
+          changed="false"
+          if git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep -qx "VERSION"; then
+            changed="true"
+          fi
+
+          file_version="$(tr -d '[:space:]' < VERSION)"
+          if ! [[ "$file_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "VERSION must be SemVer without v-prefix (example: 1.2.3)"
+            exit 1
+          fi
+
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "file_version=$file_version" >> "$GITHUB_OUTPUT"
+
+      - name: Create draft release when VERSION changed
+        if: steps.version.outputs.changed == 'true'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const tag = `v${{ steps.version.outputs.file_version }}`;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            try {
+              await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+              core.info(`Release already exists for ${tag}; skipping draft creation.`);
+              return;
+            } catch (err) {
+              if (err.status !== 404) throw err;
+            }
+
+            await github.rest.repos.createRelease({
+              owner,
+              repo,
+              tag_name: tag,
+              target_commitish: context.sha,
+              name: tag,
+              draft: true,
+              prerelease: false,
+              generate_release_notes: true,
+              body: 'Auto-generated draft release. Publish this release to trigger Docker publish, Go artifacts, and SBOM generation.'
+            });
+
+  release-publish:
+    name: Publish Release Artifacts + Docker + SBOM
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
 
     permissions:
       contents: write
@@ -83,8 +145,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
-      - name: Validate VERSION file matches tag
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Validate VERSION file matches release tag
         id: version
         run: |
           file_version="$(tr -d '[:space:]' < VERSION)"
@@ -94,6 +164,58 @@ jobs:
             exit 1
           fi
           echo "file_version=$file_version" >> "$GITHUB_OUTPUT"
+
+      - name: Set build metadata
+        id: meta
+        run: |
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          echo "commit_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests
+        run: make test
+
+      - name: Build Go release artifacts
+        run: |
+          set -euo pipefail
+          app="hec2logstashhttp"
+          version="${{ steps.version.outputs.file_version }}"
+          commit="${{ steps.meta.outputs.commit_short }}"
+          date="${{ steps.meta.outputs.build_date }}"
+
+          mkdir -p dist
+
+          build_target() {
+            local goarch="$1"
+            local goarm="$2"
+            local arch_label="$3"
+            local dir="${app}_${version}_linux_${arch_label}"
+
+            mkdir -p "dist/${dir}"
+            env \
+              GOOS=linux \
+              GOARCH="$goarch" \
+              GOARM="$goarm" \
+              CGO_ENABLED=0 \
+              go build -trimpath \
+              -ldflags="-s -w \
+                -X github.com/hellqvio/hec2logstashhttp/internal/version.Version=${version} \
+                -X github.com/hellqvio/hec2logstashhttp/internal/version.Commit=${commit} \
+                -X github.com/hellqvio/hec2logstashhttp/internal/version.Date=${date}" \
+              -o "dist/${dir}/${app}" \
+              ./cmd/hec2logstashhttp
+
+            tar -C "dist/${dir}" -czf "dist/${dir}.tar.gz" "$app"
+            rm -rf "dist/${dir}"
+          }
+
+          build_target "amd64" "" "amd64"
+          build_target "arm64" "" "arm64"
+          build_target "arm" "7" "armv7"
+
+          sha256sum dist/*.tar.gz > dist/checksums.txt
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -106,19 +228,15 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract Docker metadata
-        id: meta
+        id: docker_meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ${{ env.IMAGE_NAME }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest
-
-      - name: Set build date
-        id: build_date
-        run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -126,20 +244,32 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm/v7,linux/arm64
+          tags: ${{ steps.docker_meta.outputs.tags }}
+          labels: ${{ steps.docker_meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
             VERSION=${{ steps.version.outputs.file_version }}
             COMMIT=${{ github.sha }}
-            DATE=${{ steps.build_date.outputs.value }}
+            DATE=${{ steps.meta.outputs.build_date }}
 
-      - name: Create GitHub Release
+      - name: Install syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Generate SBOMs
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          syft dir:. -o spdx-json=dist/sbom-source.spdx.json
+          syft "${{ env.IMAGE_NAME }}:${tag}" -o spdx-json=dist/sbom-image.spdx.json
+
+      - name: Upload artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
-          name: ${{ github.ref_name }}
-          body: |
-            Container image:
-            - ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            dist/*.tar.gz
+            dist/checksums.txt
+            dist/sbom-source.spdx.json
+            dist/sbom-image.spdx.json
