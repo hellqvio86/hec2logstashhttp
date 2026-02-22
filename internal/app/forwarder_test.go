@@ -34,12 +34,13 @@ func TestNormalizePath(t *testing.T) {
 }
 
 func TestForwarderForward(t *testing.T) {
-	var gotPath, gotAuth, gotBody string
+	var gotPath, gotAuth, gotBody, gotUserAgent string
 
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
+		gotUserAgent = r.Header.Get("User-Agent")
 		gotBody = string(b)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -48,11 +49,12 @@ func TestForwarderForward(t *testing.T) {
 	cfg := Config{
 		ForwardURL:     backend.URL + "/services/collector/event",
 		RequestTimeout: time.Second,
+		ForwardUA:      true,
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	f := NewHTTPForwarder(cfg, logger)
 
-	err := f.Forward(context.Background(), "/services/collector/event", []byte(`{"event":"hello"}`), "Splunk token")
+	err := f.Forward(context.Background(), "/services/collector/event", []byte(`{"event":"hello"}`), "Splunk token", "HomeAssistant/2026.2")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,5 +67,35 @@ func TestForwarderForward(t *testing.T) {
 	}
 	if gotBody != `{"event":"hello"}` {
 		t.Fatalf("unexpected body %s", gotBody)
+	}
+	if gotUserAgent != "HomeAssistant/2026.2" {
+		t.Fatalf("unexpected user-agent %s", gotUserAgent)
+	}
+}
+
+func TestForwarderForwardUserAgentDisabled(t *testing.T) {
+	var gotUserAgent string
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUserAgent = r.Header.Get("User-Agent")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	cfg := Config{
+		ForwardURL:     backend.URL + "/services/collector/event",
+		RequestTimeout: time.Second,
+		ForwardUA:      false,
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	f := NewHTTPForwarder(cfg, logger)
+
+	err := f.Forward(context.Background(), "/services/collector/event", []byte(`{"event":"hello"}`), "", "HomeAssistant/2026.2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotUserAgent == "HomeAssistant/2026.2" {
+		t.Fatalf("expected incoming user-agent not to be forwarded, got %s", gotUserAgent)
 	}
 }

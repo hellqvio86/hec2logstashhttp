@@ -16,7 +16,7 @@ const (
 )
 
 type Forwarder interface {
-	Forward(ctx context.Context, path string, body []byte, authHeader string) error
+	Forward(ctx context.Context, path string, body []byte, authHeader string, userAgent string) error
 }
 
 type Server struct {
@@ -79,6 +79,7 @@ func (h *hecHandler) collect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	userAgent := strings.TrimSpace(r.Header.Get("User-Agent"))
 	if !h.authorized(authHeader) {
 		writeJSON(w, http.StatusUnauthorized, HECResponse{Text: "Invalid token", Code: 4})
 		return
@@ -104,7 +105,7 @@ func (h *hecHandler) collect(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), h.cfg.RequestTimeout)
 	defer cancel()
 
-	if err := h.forwarder.Forward(ctx, r.URL.Path, forwardBody, authHeader); err != nil {
+	if err := h.forwarder.Forward(ctx, r.URL.Path, forwardBody, authHeader, userAgent); err != nil {
 		h.logger.Warn("forward failed", "err", err, "path", r.URL.Path, "preview", previewBody(body))
 		writeJSON(w, http.StatusServiceUnavailable, HECResponse{Text: "Server is busy", Code: 9})
 		return

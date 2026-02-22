@@ -19,6 +19,7 @@ const (
 type Config struct {
 	ListenAddr      string
 	ForwardURL      string
+	ForwardUA       bool
 	Token           string
 	RequestTimeout  time.Duration
 	ShutdownTimeout time.Duration
@@ -30,6 +31,7 @@ func LoadConfigFromEnv() Config {
 	return Config{
 		ListenAddr:      getenv("HEC_LISTEN_ADDR", defaultListenAddr),
 		ForwardURL:      getenv("HEC_FORWARD_URL", defaultForwardURL),
+		ForwardUA:       parseBool("HEC_FORWARD_UA", false),
 		Token:           strings.TrimSpace(os.Getenv("HEC_TOKEN")),
 		RequestTimeout:  parseDuration("HEC_REQUEST_TIMEOUT", defaultRequestTimeout),
 		ShutdownTimeout: parseDuration("HEC_SHUTDOWN_TIMEOUT", defaultShutdownTimeout),
@@ -71,6 +73,20 @@ func parseInt64(key string, fallback int64) int64 {
 	}
 
 	return n
+}
+
+func parseBool(key string, fallback bool) bool {
+	val := strings.TrimSpace(os.Getenv(key))
+	if val == "" {
+		return fallback
+	}
+
+	b, err := strconv.ParseBool(val)
+	if err != nil {
+		return fallback
+	}
+
+	return b
 }
 
 func parseLogLevel(value string) slog.Level {
