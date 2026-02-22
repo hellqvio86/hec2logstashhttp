@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -133,4 +134,74 @@ func parseHECTime(v any) (string, bool) {
 func epochSecondsToRFC3339Nano(seconds float64) string {
 	nanos := int64(seconds * float64(time.Second))
 	return time.Unix(0, nanos).UTC().Format(time.RFC3339Nano)
+}
+
+func applyInputRouting(body []byte, input resolvedInput) []byte {
+	if len(body) == 0 {
+		return body
+	}
+
+	var payload any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+
+	switch typed := payload.(type) {
+	case map[string]any:
+		applyInputToEvent(typed, input)
+	case []any:
+		for _, item := range typed {
+			event, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			applyInputToEvent(event, input)
+		}
+	default:
+		return body
+	}
+
+	out, err := json.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+func applyInputToEvent(event map[string]any, input resolvedInput) {
+	if tokenName := strings.TrimSpace(input.Name); tokenName != "" {
+		event["hec_token_name"] = tokenName
+	}
+	if route := strings.TrimSpace(input.Route); route != "" {
+		event["hec_route"] = route
+	}
+	if datastream := strings.TrimSpace(input.DataStream); datastream != "" {
+		event["hec_datastream"] = datastream
+	}
+	if namespace := strings.TrimSpace(input.Namespace); namespace != "" {
+		event["hec_namespace"] = namespace
+	}
+
+	defaultSourcetype := strings.TrimSpace(input.DefaultSourcetype)
+	if defaultSourcetype != "" {
+		current := strings.TrimSpace(asString(event["hec_sourcetype"]))
+		if !input.AllowEventSourcetypeOverride || current == "" {
+			event["hec_sourcetype"] = defaultSourcetype
+		}
+	}
+
+	defaultSource := strings.TrimSpace(input.DefaultSource)
+	if defaultSource != "" {
+		current := strings.TrimSpace(asString(event["hec_source"]))
+		if !input.AllowEventSourceOverride || current == "" {
+			event["hec_source"] = defaultSource
+		}
+	}
+}
+
+func asString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
 }

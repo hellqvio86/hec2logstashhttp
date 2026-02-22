@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -69,6 +70,18 @@ type hecHandler struct {
 	forwarder Forwarder
 }
 
+type resolvedInput struct {
+	Name                         string
+	Route                        string
+	ForwardURL                   string
+	DataStream                   string
+	Namespace                    string
+	DefaultSourcetype            string
+	DefaultSource                string
+	AllowEventSourcetypeOverride bool
+	AllowEventSourceOverride     bool
+}
+
 func (h *hecHandler) healthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, HECResponse{Text: "ok", Code: 0})
 }
@@ -81,7 +94,9 @@ func (h *hecHandler) collect(w http.ResponseWriter, r *http.Request) {
 
 	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	userAgent := strings.TrimSpace(r.Header.Get("User-Agent"))
-	if !h.authorized(authHeader) {
+	tokenCandidate := extractAuthToken(authHeader)
+	input, ok := h.resolveInput(tokenCandidate)
+	if !ok {
 		writeJSON(w, http.StatusUnauthorized, HECResponse{Text: "Invalid token", Code: 4})
 		return
 	}
@@ -102,6 +117,7 @@ func (h *hecHandler) collect(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, HECResponse{Text: "Invalid data format", Code: 6})
 		return
 	}
+	forwardBody = applyInputRouting(forwardBody, input)
 
 	ctx, cancel := context.WithTimeout(r.Context(), h.cfg.RequestTimeout)
 	defer cancel()
@@ -116,6 +132,7 @@ func (h *hecHandler) collect(w http.ResponseWriter, r *http.Request) {
 		XForwardedHost:  strings.TrimSpace(r.Header.Get("X-Forwarded-Host")),
 		XForwardedProto: strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")),
 		Forwarded:       strings.TrimSpace(r.Header.Get("Forwarded")),
+		ForwardURL:      input.ForwardURL,
 	}
 
 	if err := h.forwarder.Forward(ctx, r.URL.Path, forwardBody, meta); err != nil {
@@ -216,21 +233,97 @@ func normalizeClientIP(raw string) string {
 }
 
 func (h *hecHandler) authorized(authHeader string) bool {
-	if h.cfg.Token == "" {
-		return true
+	_, ok := h.resolveInput(extractAuthToken(authHeader))
+	return ok
+}
+
+func (h *hecHandler) resolveInput(token string) (resolvedInput, bool) {
+	token = strings.TrimSpace(token)
+	if len(h.cfg.Inputs) > 0 {
+		for _, input := range h.cfg.Inputs {
+			if secureTokenEqual(input.Token, token) {
+				return resolvedInput{
+					Name:                         input.Name,
+					Route:                        defaultIfEmpty(input.Route, "default"),
+					ForwardURL:                   firstNonEmpty(input.ForwardURL, h.cfg.ForwardURL),
+					DataStream:                   input.DataStream,
+					Namespace:                    input.Namespace,
+					DefaultSourcetype:            input.DefaultSourcetype,
+					DefaultSource:                input.DefaultSource,
+					AllowEventSourcetypeOverride: input.AllowEventSourcetypeOverride,
+					AllowEventSourceOverride:     input.AllowEventSourceOverride,
+				}, true
+			}
+		}
+
+		if h.cfg.RejectUnknown {
+			return resolvedInput{}, false
+		}
+
+		return resolvedInput{
+			Route:      "default",
+			ForwardURL: h.cfg.ForwardURL,
+		}, true
 	}
 
+	if h.cfg.Token == "" {
+		return resolvedInput{
+			Route:      "default",
+			ForwardURL: h.cfg.ForwardURL,
+		}, true
+	}
+
+	if !secureTokenEqual(h.cfg.Token, token) {
+		return resolvedInput{}, false
+	}
+
+	return resolvedInput{
+		Route:      "default",
+		ForwardURL: h.cfg.ForwardURL,
+	}, true
+}
+
+func extractAuthToken(authHeader string) string {
+	authHeader = strings.TrimSpace(authHeader)
 	if authHeader == "" {
-		return false
+		return ""
 	}
 
 	prefix := "splunk "
-	tokenCandidate := authHeader
 	if strings.HasPrefix(strings.ToLower(authHeader), prefix) {
-		tokenCandidate = strings.TrimSpace(authHeader[len(prefix):])
+		return strings.TrimSpace(authHeader[len(prefix):])
 	}
 
-	return tokenCandidate == h.cfg.Token
+	return authHeader
+}
+
+func secureTokenEqual(expected string, provided string) bool {
+	if expected == "" || provided == "" {
+		return false
+	}
+
+	if len(expected) != len(provided) {
+		return false
+	}
+
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) == 1
+}
+
+func defaultIfEmpty(value string, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload HECResponse) {

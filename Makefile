@@ -8,10 +8,14 @@ LDFLAGS := -s -w \
 	-X github.com/hellqvio/hec2logstashhttp/internal/version.Commit=$(COMMIT) \
 	-X github.com/hellqvio/hec2logstashhttp/internal/version.Date=$(DATE)
 
-.PHONY: test vet lint build run tidy clean
+.PHONY: test coverage vet lint build run tidy clean
 
 test:
 	go test ./...
+
+coverage:
+	go test -covermode=atomic -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out
 
 vet:
 	go vet ./...

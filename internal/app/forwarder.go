@@ -24,6 +24,7 @@ type ForwardMeta struct {
 	XForwardedHost  string
 	XForwardedProto string
 	Forwarded       string
+	ForwardURL      string
 }
 
 type HTTPForwarder struct {
@@ -50,8 +51,15 @@ func NewHTTPForwarder(cfg Config, logger *slog.Logger) *HTTPForwarder {
 }
 
 func (f *HTTPForwarder) Forward(ctx context.Context, requestPath string, body []byte, meta ForwardMeta) error {
-	forwardURL := *f.target
-	forwardURL.Path = normalizePath(f.target.Path, requestPath)
+	target := f.target
+	if override := strings.TrimSpace(meta.ForwardURL); override != "" {
+		if parsed, err := url.Parse(override); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+			target = parsed
+		}
+	}
+
+	forwardURL := *target
+	forwardURL.Path = normalizePath(target.Path, requestPath)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, forwardURL.String(), bytes.NewReader(body))
 	if err != nil {

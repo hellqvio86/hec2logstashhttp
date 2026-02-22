@@ -163,3 +163,35 @@ func TestForwarderForwardPreservesForwardChain(t *testing.T) {
 		t.Fatalf("unexpected Forwarded header %s", gotForwarded)
 	}
 }
+
+func TestForwarderForwardUsesPerRequestForwardURL(t *testing.T) {
+	var gotPath string
+
+	backendDefault := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer backendDefault.Close()
+
+	backendOverride := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backendOverride.Close()
+
+	cfg := Config{
+		ForwardURL:     backendDefault.URL + "/services/collector/event",
+		RequestTimeout: time.Second,
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	f := NewHTTPForwarder(cfg, logger)
+
+	err := f.Forward(context.Background(), "/services/collector/event", []byte(`{"event":"hello"}`), ForwardMeta{
+		ForwardURL: backendOverride.URL + "/services/collector/event",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotPath != "/services/collector/event" {
+		t.Fatalf("unexpected override path %s", gotPath)
+	}
+}
