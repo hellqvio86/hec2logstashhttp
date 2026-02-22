@@ -95,10 +95,16 @@ func (h *hecHandler) collect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	forwardBody, ok := normalizeHECPayload(body)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, HECResponse{Text: "Invalid data format", Code: 6})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), h.cfg.RequestTimeout)
 	defer cancel()
 
-	if err := h.forwarder.Forward(ctx, r.URL.Path, body, authHeader); err != nil {
+	if err := h.forwarder.Forward(ctx, r.URL.Path, forwardBody, authHeader); err != nil {
 		h.logger.Warn("forward failed", "err", err, "path", r.URL.Path, "preview", previewBody(body))
 		writeJSON(w, http.StatusServiceUnavailable, HECResponse{Text: "Server is busy", Code: 9})
 		return

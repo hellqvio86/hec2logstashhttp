@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,9 +13,17 @@ import (
 	"time"
 
 	"github.com/hellqvio/hec2logstashhttp/internal/app"
+	"github.com/hellqvio/hec2logstashhttp/internal/version"
 )
 
 func main() {
+	showVersion := flag.Bool("version", false, "print version and exit")
+	flag.Parse()
+	if *showVersion {
+		fmt.Printf("version=%s commit=%s date=%s\n", version.Version, version.Commit, version.Date)
+		return
+	}
+
 	cfg := app.LoadConfigFromEnv()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -35,7 +45,14 @@ func main() {
 		}
 	}()
 
-	logger.Info("starting hec shim", "listen_addr", cfg.ListenAddr, "forward_url", cfg.ForwardURL)
+	logger.Info(
+		"starting hec shim",
+		"listen_addr", cfg.ListenAddr,
+		"forward_url", cfg.ForwardURL,
+		"version", version.Version,
+		"commit", version.Commit,
+		"build_date", version.Date,
+	)
 
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error("server exited with error", "err", err)

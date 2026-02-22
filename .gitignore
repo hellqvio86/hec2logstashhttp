@@ -1,0 +1,12 @@
+# Binaries
+bin/
+dist/
+hec-to-logstash-http
+
+# Go
+*.test
+coverage.out
+
+# IDE
+.idea/
+.vscode/

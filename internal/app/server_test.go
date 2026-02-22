@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -61,6 +62,13 @@ func TestCollectSuccess(t *testing.T) {
 	}
 	if mf.lastPath != "/services/collector/event" {
 		t.Fatalf("unexpected forward path: %s", mf.lastPath)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(mf.lastBody, &got); err != nil {
+		t.Fatalf("forwarded body is not JSON: %v", err)
+	}
+	if got["message"] != "ok" {
+		t.Fatalf("unexpected forwarded body: %s", string(mf.lastBody))
 	}
 }
 
@@ -134,5 +142,25 @@ func TestCollectNoData(t *testing.T) {
 	}
 	if mf.lastPath != "" {
 		t.Fatalf("expected no forwarding for no-data check, got %s", mf.lastPath)
+	}
+}
+
+func TestCollectInvalidHECPayload(t *testing.T) {
+	cfg := testConfig()
+	mf := &mockForwarder{}
+	h := newHandler(cfg, testLogger(), mf)
+
+	req := httptest.NewRequest(http.MethodPost, "/services/collector/event", strings.NewReader(`{"message":"not-hec"}`))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"code":6`) {
+		t.Fatalf("expected code 6 body, got %s", w.Body.String())
+	}
+	if mf.lastPath != "" {
+		t.Fatalf("expected no forwarding for invalid payload, got %s", mf.lastPath)
 	}
 }
