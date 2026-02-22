@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,11 +18,19 @@ import (
 )
 
 func main() {
-	showVersion := flag.Bool("version", false, "print version and exit")
-	flag.Parse()
+	os.Exit(run(os.Args[1:], os.Stdout))
+}
+
+func run(args []string, stdout io.Writer) int {
+	flagSet := flag.NewFlagSet("hec2logstashhttp", flag.ContinueOnError)
+	flagSet.SetOutput(io.Discard)
+	showVersion := flagSet.Bool("version", false, "print version and exit")
+	if err := flagSet.Parse(args); err != nil {
+		return 2
+	}
 	if *showVersion {
-		fmt.Printf("version=%s commit=%s date=%s\n", version.Version, version.Commit, version.Date)
-		return
+		fmt.Fprintf(stdout, "version=%s commit=%s date=%s\n", version.Version, version.Commit, version.Date)
+		return 0
 	}
 
 	cfg := app.LoadConfigFromEnv()
@@ -56,9 +65,10 @@ func main() {
 
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error("server exited with error", "err", err)
-		os.Exit(1)
+		return 1
 	}
 
 	time.Sleep(50 * time.Millisecond)
 	logger.Info("server stopped")
+	return 0
 }
