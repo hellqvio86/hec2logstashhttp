@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -108,7 +109,7 @@ func (h *hecHandler) collect(w http.ResponseWriter, r *http.Request) {
 	meta := ForwardMeta{
 		AuthHeader:      authHeader,
 		UserAgent:       userAgent,
-		ClientIP:        clientIPFromRemoteAddr(r.RemoteAddr),
+		ClientIP:        clientIPFromRequest(r),
 		Host:            strings.TrimSpace(r.Host),
 		Proto:           requestProto(r),
 		XForwardedFor:   strings.TrimSpace(r.Header.Get("X-Forwarded-For")),
@@ -134,6 +135,84 @@ func requestProto(r *http.Request) string {
 		return "https"
 	}
 	return "http"
+}
+
+func clientIPFromRequest(r *http.Request) string {
+	if ip := firstForwardedFor(strings.TrimSpace(r.Header.Get("Forwarded"))); ip != "" {
+		return ip
+	}
+	if ip := firstXForwardedFor(strings.TrimSpace(r.Header.Get("X-Forwarded-For"))); ip != "" {
+		return ip
+	}
+	if ip := normalizeClientIP(strings.TrimSpace(r.Header.Get("X-Real-IP"))); ip != "" {
+		return ip
+	}
+	return clientIPFromRemoteAddr(r.RemoteAddr)
+}
+
+func firstForwardedFor(value string) string {
+	if value == "" {
+		return ""
+	}
+
+	entries := strings.Split(value, ",")
+	for _, entry := range entries {
+		parts := strings.Split(entry, ";")
+		for _, part := range parts {
+			keyValue := strings.SplitN(part, "=", 2)
+			if len(keyValue) != 2 {
+				continue
+			}
+
+			if strings.ToLower(strings.TrimSpace(keyValue[0])) != "for" {
+				continue
+			}
+
+			if candidate := normalizeClientIP(keyValue[1]); candidate != "" {
+				return candidate
+			}
+		}
+	}
+
+	return ""
+}
+
+func firstXForwardedFor(value string) string {
+	if value == "" {
+		return ""
+	}
+	first := strings.Split(value, ",")[0]
+	return normalizeClientIP(first)
+}
+
+func normalizeClientIP(raw string) string {
+	value := strings.TrimSpace(raw)
+	value = strings.Trim(value, "\"")
+	if value == "" || strings.EqualFold(value, "unknown") {
+		return ""
+	}
+
+	// RFC 7239 obfuscated identifier: for=_hidden
+	if strings.HasPrefix(value, "_") {
+		return ""
+	}
+
+	if strings.HasPrefix(value, "[") {
+		// [IPv6] or [IPv6]:port
+		if idx := strings.Index(value, "]"); idx > 1 {
+			host := strings.TrimSpace(value[1:idx])
+			if host != "" {
+				return host
+			}
+		}
+		return ""
+	}
+
+	if host, _, err := net.SplitHostPort(value); err == nil {
+		return strings.TrimSpace(host)
+	}
+
+	return value
 }
 
 func (h *hecHandler) authorized(authHeader string) bool {

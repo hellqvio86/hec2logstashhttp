@@ -182,3 +182,46 @@ func TestCollectInvalidHECPayload(t *testing.T) {
 		t.Fatalf("expected no forwarding for invalid payload, got %s", mf.lastPath)
 	}
 }
+
+func TestCollectClientIPFromForwardedHeader(t *testing.T) {
+	cfg := testConfig()
+	mf := &mockForwarder{}
+	h := newHandler(cfg, testLogger(), mf)
+
+	req := httptest.NewRequest(http.MethodPost, "/services/collector/event", strings.NewReader(`{"event":"ok"}`))
+	req.Header.Set("Forwarded", `for=198.51.100.7;proto=https, for=127.0.0.1`)
+	req.Header.Set("X-Forwarded-For", "203.0.113.10")
+	req.Header.Set("X-Real-IP", "10.0.0.5")
+	req.RemoteAddr = "127.0.0.1:34567"
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", w.Code)
+	}
+	if mf.lastMeta.ClientIP != "198.51.100.7" {
+		t.Fatalf("unexpected client ip from forwarded header: %s", mf.lastMeta.ClientIP)
+	}
+}
+
+func TestCollectClientIPFromXForwardedForHeader(t *testing.T) {
+	cfg := testConfig()
+	mf := &mockForwarder{}
+	h := newHandler(cfg, testLogger(), mf)
+
+	req := httptest.NewRequest(http.MethodPost, "/services/collector/event", strings.NewReader(`{"event":"ok"}`))
+	req.Header.Set("X-Forwarded-For", "198.51.100.8, 127.0.0.1")
+	req.Header.Set("X-Real-IP", "10.0.0.5")
+	req.RemoteAddr = "127.0.0.1:34567"
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 got %d", w.Code)
+	}
+	if mf.lastMeta.ClientIP != "198.51.100.8" {
+		t.Fatalf("unexpected client ip from x-forwarded-for header: %s", mf.lastMeta.ClientIP)
+	}
+}
