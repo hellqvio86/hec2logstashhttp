@@ -127,7 +127,7 @@ jobs:
 
       - name: Create draft release when VERSION changed
         if: steps.version.outputs.changed == 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const tag = `v${{ steps.version.outputs.file_version }}`;
