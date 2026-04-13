@@ -285,7 +285,7 @@ jobs:
           syft "${{ env.IMAGE_NAME }}@${{ steps.docker_build.outputs.digest }}" -o spdx-json=dist/sbom-image.spdx.json
 
       - name: Upload artifacts to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
