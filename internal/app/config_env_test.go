@@ -128,7 +128,10 @@ func TestNewServerLifecycle(t *testing.T) {
 		LogLevel:        slog.LevelError,
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := NewServer(cfg, logger)
+	srv, err := NewServer(cfg, logger)
+	if err != nil {
+		t.Fatalf("unexpected error creating server: %v", err)
+	}
 
 	done := make(chan error, 1)
 	go func() {
@@ -145,5 +148,36 @@ func TestNewServerLifecycle(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("server did not stop")
+	}
+}
+
+func TestLoadConfigFromEnvTLS(t *testing.T) {
+	t.Setenv("HEC_TLS_CERT_FILE", "/etc/ssl/cert.pem")
+	t.Setenv("HEC_TLS_KEY_FILE", "/etc/ssl/key.pem")
+	t.Setenv("HEC_TLS_CLIENT_CA_FILE", "/etc/ssl/ca.pem")
+	t.Setenv("HEC_TLS_MIN_VERSION", "1.3")
+
+	cfg := LoadConfigFromEnv()
+	if !cfg.TLSEnabled {
+		t.Fatal("expected TLSEnabled to be true when cert and key files are provided")
+	}
+	if cfg.TLSCertFile != "/etc/ssl/cert.pem" {
+		t.Fatalf("unexpected TLSCertFile: %s", cfg.TLSCertFile)
+	}
+	if cfg.TLSKeyFile != "/etc/ssl/key.pem" {
+		t.Fatalf("unexpected TLSKeyFile: %s", cfg.TLSKeyFile)
+	}
+	if cfg.TLSClientCAFile != "/etc/ssl/ca.pem" {
+		t.Fatalf("unexpected TLSClientCAFile: %s", cfg.TLSClientCAFile)
+	}
+	if cfg.TLSMinVersion != "1.3" {
+		t.Fatalf("unexpected TLSMinVersion: %s", cfg.TLSMinVersion)
+	}
+
+	// Explicit disable override
+	t.Setenv("HEC_TLS_ENABLED", "false")
+	cfgDisabled := LoadConfigFromEnv()
+	if cfgDisabled.TLSEnabled {
+		t.Fatal("expected TLSEnabled to be false when HEC_TLS_ENABLED=false")
 	}
 }

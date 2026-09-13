@@ -4,11 +4,16 @@ import (
 	"bytes"
 	"context"
 	"crypto/subtle"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -23,25 +28,84 @@ type Forwarder interface {
 
 type Server struct {
 	httpServer *http.Server
+	cfg        Config
 }
 
-func NewServer(cfg Config, logger *slog.Logger) *Server {
+func buildTLSConfig(cfg Config) (*tls.Config, error) {
+	if !cfg.TLSEnabled {
+		return nil, nil
+	}
+
+	if cfg.TLSCertFile == "" {
+		return nil, errors.New("tls is enabled but HEC_TLS_CERT_FILE is empty")
+	}
+	if cfg.TLSKeyFile == "" {
+		return nil, errors.New("tls is enabled but HEC_TLS_KEY_FILE is empty")
+	}
+
+	cert, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load tls certificate/key pair: %w", err)
+	}
+
+	var minVersion uint16
+	switch strings.TrimSpace(cfg.TLSMinVersion) {
+	case "1.3", "tls1.3", "TLS1.3":
+		minVersion = tls.VersionTLS13
+	case "1.2", "tls1.2", "TLS1.2", "":
+		minVersion = tls.VersionTLS12
+	default:
+		return nil, fmt.Errorf("unsupported tls min version %q", cfg.TLSMinVersion)
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   minVersion,
+	}
+
+	if cfg.TLSClientCAFile != "" {
+		caCert, err := os.ReadFile(cfg.TLSClientCAFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read client ca file %q: %w", cfg.TLSClientCAFile, err)
+		}
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to parse client ca certificates from %q", cfg.TLSClientCAFile)
+		}
+		tlsConfig.ClientCAs = caCertPool
+		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+
+	return tlsConfig, nil
+}
+
+func NewServer(cfg Config, logger *slog.Logger) (*Server, error) {
+	tlsConfig, err := buildTLSConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	forwarder := NewHTTPForwarder(cfg, logger)
 	handler := newHandler(cfg, logger, forwarder)
 
 	return &Server{
+		cfg: cfg,
 		httpServer: &http.Server{
 			Addr:              cfg.ListenAddr,
 			Handler:           handler,
+			TLSConfig:         tlsConfig,
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       10 * time.Second,
 			WriteTimeout:      10 * time.Second,
 			IdleTimeout:       60 * time.Second,
 		},
-	}
+	}, nil
 }
 
 func (s *Server) ListenAndServe() error {
+	if s.cfg.TLSEnabled {
+		return s.httpServer.ListenAndServeTLS("", "")
+	}
 	return s.httpServer.ListenAndServe()
 }
 

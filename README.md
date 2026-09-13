@@ -30,6 +30,7 @@ Some senders expect Splunk HEC response semantics (`{"text":"Success","code":0}`
 - Adds standard proxy forwarding headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`)
 - Normalizes Splunk HEC envelopes into Logstash-friendly JSON (supports single and batched HEC events)
 - Rejects non-HEC payloads with Splunk-compatible error response (`{"text":"Invalid data format","code":6}`)
+- TLS/HTTPS support with configurable minimum TLS version and optional client CA authentication (mTLS)
 
 ## Configuration
 
@@ -40,6 +41,11 @@ Environment variables:
 - `HEC_FORWARD_UA` (default `false`; when `true`, forwards incoming client `User-Agent`)
 - `HEC_TOKEN` (default empty; if empty, auth is not enforced)
 - `HEC_INPUTS_CONFIG` (optional path to token profile config in YAML or JSON; enables Splunk-style token-centric routing)
+- `HEC_TLS_ENABLED` (default `false`; automatically enabled if `HEC_TLS_CERT_FILE` and `HEC_TLS_KEY_FILE` are configured)
+- `HEC_TLS_CERT_FILE` (optional path to TLS server certificate in PEM format)
+- `HEC_TLS_KEY_FILE` (optional path to TLS private key in PEM format)
+- `HEC_TLS_CLIENT_CA_FILE` (optional path to client CA certificate in PEM format for mutual TLS / mTLS)
+- `HEC_TLS_MIN_VERSION` (minimum TLS version: `1.2` or `1.3`; default `1.2`)
 - `HEC_REQUEST_TIMEOUT` (default `5s`)
 - `HEC_SHUTDOWN_TIMEOUT` (default `10s`)
 - `HEC_MAX_BODY_BYTES` (default `1048576`)

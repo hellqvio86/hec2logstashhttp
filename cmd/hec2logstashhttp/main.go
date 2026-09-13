@@ -39,7 +39,11 @@ func run(args []string, stdout io.Writer) int {
 		Level: cfg.LogLevel,
 	}))
 
-	server := app.NewServer(cfg, logger)
+	server, err := app.NewServer(cfg, logger)
+	if err != nil {
+		logger.Error("server initialization failed", "err", err)
+		return 1
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -58,6 +62,7 @@ func run(args []string, stdout io.Writer) int {
 		"starting hec shim",
 		"listen_addr", cfg.ListenAddr,
 		"forward_url", cfg.ForwardURL,
+		"tls_enabled", cfg.TLSEnabled,
 		"version", version.Version,
 		"commit", version.Commit,
 		"build_date", version.Date,

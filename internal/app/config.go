@@ -32,6 +32,11 @@ type Config struct {
 	ShutdownTimeout time.Duration
 	MaxBodyBytes    int64
 	LogLevel        slog.Level
+	TLSEnabled      bool
+	TLSCertFile     string
+	TLSKeyFile      string
+	TLSClientCAFile string
+	TLSMinVersion   string
 }
 
 type InputProfile struct {
@@ -55,6 +60,15 @@ type inputProfilesFile struct {
 }
 
 func LoadConfigFromEnv() Config {
+	certFile := strings.TrimSpace(os.Getenv("HEC_TLS_CERT_FILE"))
+	keyFile := strings.TrimSpace(os.Getenv("HEC_TLS_KEY_FILE"))
+	clientCAFile := strings.TrimSpace(os.Getenv("HEC_TLS_CLIENT_CA_FILE"))
+	tlsExplicit := os.Getenv("HEC_TLS_ENABLED") != ""
+	tlsEnabled := parseBool("HEC_TLS_ENABLED", false)
+	if !tlsExplicit && (certFile != "" || keyFile != "") {
+		tlsEnabled = true
+	}
+
 	cfg := Config{
 		ListenAddr:      getenv("HEC_LISTEN_ADDR", defaultListenAddr),
 		ForwardURL:      getenv("HEC_FORWARD_URL", defaultForwardURL),
@@ -66,6 +80,11 @@ func LoadConfigFromEnv() Config {
 		ShutdownTimeout: parseDuration("HEC_SHUTDOWN_TIMEOUT", defaultShutdownTimeout),
 		MaxBodyBytes:    parseInt64("HEC_MAX_BODY_BYTES", defaultMaxBodyBytes),
 		LogLevel:        parseLogLevel(getenv("HEC_LOG_LEVEL", "info")),
+		TLSEnabled:      tlsEnabled,
+		TLSCertFile:     certFile,
+		TLSKeyFile:      keyFile,
+		TLSClientCAFile: clientCAFile,
+		TLSMinVersion:   getenv("HEC_TLS_MIN_VERSION", "1.2"),
 	}
 
 	if cfg.InputsConfig == "" {
