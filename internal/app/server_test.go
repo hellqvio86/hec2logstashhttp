@@ -747,7 +747,9 @@ func TestServerHTTPSCollectEvent(t *testing.T) {
 	}
 
 	_ = srv.Shutdown(context.Background())
-	_ = <-serverDone
+	if err := <-serverDone; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("unexpected server shutdown error: %v", err)
+	}
 }
 
 func TestServerHTTPSmTLS(t *testing.T) {
@@ -843,5 +845,7 @@ func TestServerHTTPSmTLS(t *testing.T) {
 	}
 
 	_ = srv.Shutdown(context.Background())
-	_ = <-serverDone
+	if err := <-serverDone; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("unexpected server shutdown error: %v", err)
+	}
 }
