@@ -139,7 +139,15 @@ make build
 Set a new release version:
 
 ```bash
-echo "0.2.0" > VERSION
+# Bump patch version (e.g. 0.2.0 -> 0.2.1):
+make version
+
+# Or bump minor / major version:
+make version BUMP=minor
+make version BUMP=major
+
+# Or set an explicit version:
+make version V=0.2.1
 ```
 
 Print version from the binary:
