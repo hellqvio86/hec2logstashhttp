@@ -8,7 +8,7 @@ LDFLAGS := -s -w \
 	-X github.com/hellqvio/hec2logstashhttp/internal/version.Commit=$(COMMIT) \
 	-X github.com/hellqvio/hec2logstashhttp/internal/version.Date=$(DATE)
 
-.PHONY: fmt fmt-check test coverage vet lint build run tidy clean
+.PHONY: fmt fmt-check test coverage vet lint build run tidy clean renovate renovate-summary
 
 fmt:
 	gofmt -w .
@@ -44,5 +44,12 @@ tidy:
 	go mod tidy
 
 clean:
-	rm -rf bin
+	rm -f bin/$(APP_NAME)
 	go clean -testcache
+
+renovate:
+	@./bin/renovate/run.sh
+
+renovate-summary:
+	@./bin/renovate/run.sh --summary
+
