@@ -747,7 +747,7 @@ func TestServerHTTPSCollectEvent(t *testing.T) {
 	}
 
 	_ = srv.Shutdown(context.Background())
-	<-serverDone
+	_ = <-serverDone
 }
 
 func TestServerHTTPSmTLS(t *testing.T) {
@@ -843,5 +843,5 @@ func TestServerHTTPSmTLS(t *testing.T) {
 	}
 
 	_ = srv.Shutdown(context.Background())
-	<-serverDone
+	_ = <-serverDone
 }
